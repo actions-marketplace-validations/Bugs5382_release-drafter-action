@@ -113,7 +113,7 @@ Every release-drafter v7 input is supported, plus `config`, `extends`, `extends-
 | `header` | Text added before the body. |
 | `footer` | Text added after the body. |
 | `filter-by-range` | Semver range the last release must satisfy. |
-| `since` | First-release start point: a tag, SHA or date. |
+| `since` | First-release start point: a tag, SHA or date. With a tag or SHA, the release lists what came after that commit, and `$PREVIOUS_TAG` is the tag or SHA itself. With a date, it lists what was committed from then on, and `$PREVIOUS_TAG` is the oldest commit listed. |
 | `first-version` | Resolved version for a first release (no version/tag/name override), instead of incrementing from 0.0.0. Default `1.0.0`. |
 | `dry-run` | Print the body and outputs, write nothing. |
 
@@ -136,6 +136,59 @@ rest still report what was (or would have been) rendered.
 A local `.github/release-drafter.yml` keeps working as the fallback. `_extends` (v7's own config
 key) and reading config from another repository through `config-name` (`owner/repo:path`,
 `github:`) are not supported; use the `extends` input instead.
+
+## 🚦 Release candidates
+
+The recommended prerelease flow is `rc` only: `rc.1`, `rc.2`, ... until the line is stable, then
+the plain release. Skip alpha and beta stages; they add steps without adding information an `rc`
+doesn't already carry.
+
+A first release can start directly on `rc.1` by combining `first-version` with `prerelease` and
+`prerelease-identifier`:
+
+```yaml
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the release instead of leaving it a draft
+        type: boolean
+        default: false
+permissions:
+  contents: write
+jobs:
+  draft:
+    name: 📝 Draft release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: Bugs5382/release-drafter-action@v1
+        with:
+          first-version: 0.1.0
+          prerelease: true
+          prerelease-identifier: rc
+          publish: ${{ inputs.publish || false }}
+```
+
+Every push to `main` redrafts `v0.1.0-rc.1`; publishing it (`publish: true`) and merging more pull
+requests bumps the next draft to `v0.1.0-rc.2`, `v0.1.0-rc.3` and so on, each covering only what
+merged since the published rc.
+
+To promote the line to the real release, drop `prerelease` and `prerelease-identifier` and add
+`include-pre-releases` for that one run, so the resolver still anchors on the published rc instead
+of starting over from `first-version`:
+
+```yaml
+      - uses: Bugs5382/release-drafter-action@v1
+        with:
+          include-pre-releases: true
+          publish: true
+```
+
+The draft comes out as the plain `v0.1.0` - the prerelease dropped, not bumped again on top of it.
+Setting `prerelease-identifier` on this run would switch `prerelease` back on (v7's own
+identifier-implies-prerelease behavior, with a warning), so leave it unset for the promotion.
 
 ## 🛠 Develop
 
